@@ -1,0 +1,4 @@
+slack-bolt>=1.21
+claude-agent-sdk>=0.2
+apscheduler>=3.10
+aiohttp>=3.9
