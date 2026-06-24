@@ -13,6 +13,7 @@ Bot  ▸  Your proposals are the priority and you've sent 0 this week.
 ```
 
 ## What it does
+- **Native AI pane** — uses Slack's Assistant framework (Agents & AI Apps): a dedicated AI panel, suggested prompts on open, and a real "is thinking…" status while it works.
 - **Two-way chat** — DM it or @mention it in a channel; it answers as your manager.
 - **Knowledge-grounded** — reads your Markdown notes (priorities, logs, projects) before answering.
 - **Proactive nudges** — scheduled morning + end-of-day check-ins.
@@ -31,7 +32,7 @@ So you can point it at a vault that mixes work and private notes, and it's *phys
 
 ## Architecture
 ```text
-Slack (Socket Mode)  ──►  bot.py (Bolt)  ──►  manager_agent.py (Claude Agent SDK)
+Slack (Socket Mode)  ──►  bot.py (Bolt + Assistant)  ──►  manager_agent.py (Claude Agent SDK)
                                                  ├─ Read / Glob / Grep   (your notes, read-only)
                                                  ├─ vault_append          (append-only, guarded)
                                                  └─ ClickUp MCP           (optional)
@@ -51,7 +52,8 @@ pip install -r requirements.txt
 
 Create a Slack app (From scratch) and enable:
 - **Socket Mode** → generate an App-Level Token (`connections:write`) → `xapp-…`
-- **Bot Token Scopes:** `chat:write`, `app_mentions:read`, `im:history`, `im:read`, `im:write`
+- **Agents & AI Apps** → enable the Assistant (this is what gives the AI pane, suggested prompts, and the "is thinking…" status)
+- **Bot Token Scopes:** `chat:write`, `assistant:write`, `app_mentions:read`, `im:history`, `im:read`, `im:write`
 - **Event Subscriptions** → bot events `app_mention` + `message.im`
 - **Install to Workspace** → Bot User OAuth Token → `xoxb-…`
 - **App Home** → enable the Messages tab and check *"Allow users to send messages…"*
