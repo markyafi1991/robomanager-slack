@@ -1,4 +1,8 @@
-"""RoboManager — a two-way Slack manager bot (Socket Mode) + proactive nudges.
+"""RoboManager — a two-way Slack manager bot on the Claude Agent SDK.
+
+Uses Slack's native Assistant framework (Agents & AI Apps): a dedicated AI pane,
+suggested prompts on open, and the real "is thinking…" status indicator — plus
+proactive nudges and channel @mentions.
 
 Run:  python3 bot.py   (after `pip install -r requirements.txt` and setting tokens)
 """
@@ -9,7 +13,7 @@ import config
 from manager_agent import run_agent
 import nudges
 
-from slack_bolt.async_app import AsyncApp
+from slack_bolt.async_app import AsyncApp, AsyncAssistant
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -21,33 +25,66 @@ if not config.ANTHROPIC_API_KEY:
     log.info("No ANTHROPIC_API_KEY set — using your Claude Code login (subscription auth).")
 
 app = AsyncApp(token=config.SLACK_BOT_TOKEN)
-SESSIONS: dict[str, str] = {}  # channel -> Agent SDK session_id (conversation continuity)
+assistant = AsyncAssistant()
+SESSIONS: dict[str, str] = {}  # thread key -> Agent SDK session_id (conversation continuity)
+
+# Words that wipe a thread's memory and start fresh.
+_RESET = {"reset", "clear", "clear chat", "new chat", "start over", "forget", "wipe"}
 
 
-async def _respond(text: str, channel: str, say) -> None:
+async def _handle(text: str, key: str, say, set_status=None) -> None:
+    """One conversational turn, shared by the assistant pane and channel @mentions."""
+    if (text or "").strip().lower() in _RESET:
+        SESSIONS.pop(key, None)
+        await say("Fresh start — wiped this thread's memory. What's next?")
+        return
     try:
-        reply, session = await run_agent(text, resume=SESSIONS.get(channel))
+        if set_status:
+            await set_status("is thinking…")  # native Slack assistant status indicator
+        reply, session = await run_agent(text, resume=SESSIONS.get(key))
         if session:
-            SESSIONS[channel] = session
-        await say(reply)
+            SESSIONS[key] = session
+        await say(reply or "…")
     except Exception as e:  # keep the bot alive on any single-turn failure
         log.exception("agent error")
-        await say(f"⚠️ I hit an error: {e}")
+        await say(f"I hit an error: {e}")
 
+
+# ---------------- Assistant: the AI pane (Agents & AI Apps) ----------------
+
+@assistant.thread_started
+async def on_thread_started(say, set_suggested_prompts):
+    await say("RoboManager here — I read your notes and help you pick the single "
+              "highest-leverage next thing to do. What are we working on?")
+    try:
+        await set_suggested_prompts(prompts=[
+            {"title": "Plan my day", "message": "What should I work on next?"},
+            {"title": "What's due?", "message": "What's overdue or due soon in my notes?"},
+            {"title": "Summarize", "message": "Summarize my most recent daily note."},
+            {"title": "Where am I?", "message": "Give me a quick status of my current priorities."},
+        ])
+    except Exception:
+        log.exception("set_suggested_prompts failed")
+
+
+@assistant.user_message
+async def on_user_message(message, say, set_status):
+    key = message.get("thread_ts") or message.get("ts") or message.get("channel")
+    await _handle(message.get("text", ""), key, say, set_status)
+
+
+app.use(assistant)
+
+
+# ---------------- Channel @mentions ----------------
 
 @app.event("app_mention")
 async def on_mention(event, say):
-    await _respond(event.get("text", ""), event["channel"], say)
+    await _handle(event.get("text", ""), f"mention:{event['channel']}", say)
 
 
-@app.event("message")
-async def on_message(event, say):
-    # Only respond to direct messages; never to bots or our own messages.
-    if event.get("channel_type") == "im" and not event.get("bot_id") and event.get("subtype") is None:
-        await _respond(event.get("text", ""), event["channel"], say)
+# ---------------- Proactive nudges ----------------
 
-
-# --- Proactive nudges ---
 scheduler = AsyncIOScheduler(timezone=config.TIMEZONE)
 
 
