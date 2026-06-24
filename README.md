@@ -1,4 +1,6 @@
-# RoboManager 🤖
+# RoboManager
+
+**A Slack AI manager you can safely point at your real notes — because its permissions are enforced in code, not by a prompt.**
 
 A two-way **Slack manager bot** powered by the **Claude Agent SDK**. Chat with it like a manager, and it nudges you proactively. It reads a folder of Markdown notes as its "knowledge base" (an Obsidian vault works great), so its advice is grounded in *your* actual priorities — not generic platitudes.
 
